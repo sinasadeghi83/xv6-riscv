@@ -91,3 +91,21 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+//returns children and grand childrens of a process
+uint64
+sys_chp(void)
+{
+  struct child_processes* children;
+  struct child_processes result_children;
+  argaddr(0, (uint64 *)&children);
+
+  int e = chp(&result_children);
+
+  struct proc *p = myproc();
+
+  if(copyout(p->pagetable, (uint64)children, (char*)&result_children, sizeof(result_children)) < 0){
+    return -1;
+  }
+  return e;
+}

@@ -26,6 +26,36 @@ extern char trampoline[]; // trampoline.S
 // must be acquired before any p->lock.
 struct spinlock wait_lock;
 
+
+int
+chp(struct child_processes* chpcs){
+  struct proc* tProc = myproc();
+  acquire(&tProc->lock);
+  chpcs->count = 0;
+  for (struct proc* p = proc; p < &proc[NPROC]; p++){
+    struct proc* parent = p->parent;
+    while(parent > 0){
+      if(parent->pid == tProc->pid){
+        struct proc_info prc;
+        strncpy(prc.name, p->name, 16);
+        prc.pid = p->pid;
+        if (p->parent > 0){
+          prc.ppid = p->parent->pid;
+        }else{
+          prc.ppid = 0;
+        }
+        prc.state = p->state;
+        chpcs->processes[chpcs->count++] = prc;
+        break;
+      }
+      parent = parent->parent;
+    }
+  }
+  release(&tProc->lock);
+  return 0;
+}
+
+
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
 // guard page.
