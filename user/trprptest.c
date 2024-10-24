@@ -26,18 +26,18 @@ int main(int argc, char *argv[])
             }
             else
             {
-                printf("i:%d\tsecond pid: %d\n", i, p2);
+                // printf("i:%d\tsecond pid: %d\n", i, p2);
                 int *x = 0;
                 *x = 4;
-                wait((int *)0);
+                // wait((int *)0);
                 sleep(3);
             }
             exit(0);
         }
-        printf("i:%d\tfirst pid: %d\n", i, p1);
+        // printf("i:%d\tfirst pid: %d\n", i, p1);
 
     }
-    sleep(1);
+    sleep(5);
 
     struct report_traps rps;
     int e = trprp(&rps);

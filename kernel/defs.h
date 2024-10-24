@@ -36,6 +36,7 @@ void            fileinit(void);
 int             fileread(struct file*, uint64, int n);
 int             filestat(struct file*, uint64 addr);
 int             filewrite(struct file*, uint64, int n);
+int             fileappend(char *filename, void *data, int struct_size);
 
 // fs.c
 void            fsinit(int);

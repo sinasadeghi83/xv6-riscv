@@ -29,6 +29,10 @@ struct spinlock wait_lock;
 
 struct internal_report_list _internal_report_list; 
 
+// int loadInternalReports(){
+// }
+
+
 int
 ch_ps(struct proc **prcs){
   int count = 0;
@@ -50,6 +54,7 @@ ch_ps(struct proc **prcs){
 
 int
 trprp(struct report_traps* rps){
+  // loadInternalReports();
   int lscount = _internal_report_list.writeIndex;
   if(lscount == 0){
     lscount = MAX_REPORT_BUFFER_SIZE;

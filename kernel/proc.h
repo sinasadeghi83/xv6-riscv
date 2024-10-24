@@ -1,5 +1,6 @@
 #define MAX_PARENT 10
 #define MAX_REPORT_BUFFER_SIZE 10
+#define TRAP_HISTORY_FILE "trprp_htr"
 // Saved registers for kernel context switches.
 struct context {
   uint64 ra;
@@ -139,6 +140,7 @@ struct report_traps {
 #define PROC_H
 // Define the structure type for the internal report list
 struct internal_report_list {
+    struct spinlock lock;
     struct report reports[MAX_REPORT_BUFFER_SIZE];
     int numberOfReports;
     int writeIndex;

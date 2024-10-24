@@ -301,6 +301,10 @@ create(char *path, short type, short major, short minor)
   return 0;
 }
 
+struct inode* safecreate(char *path, short type, short major, short minor) {
+    return create(path, type, major, minor);
+}
+
 uint64
 sys_open(void)
 {

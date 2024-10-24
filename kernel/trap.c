@@ -29,6 +29,35 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
+int recordTrap(struct proc* p){
+  // acquire(&_internal_report_list.lock);
+  struct report rp;
+  rp.pcount = 0;
+  struct proc* parent = p->parent;
+  while(parent > 0)
+  {
+    // printf("parent pid:%d\n", parent->pid);
+    rp.ppid[rp.pcount++] = parent->pid;
+    parent = parent->parent;
+  }
+  rp.pid = p->pid;
+  strncpy(rp.pname, p->name, 16);
+  rp.scause = r_scause();
+  rp.sepc = r_sepc();
+  rp.stval = r_stval();
+  int flag = fileappend("trprp_hist", &rp, sizeof(struct report));
+  if(flag != 0){
+    printf("err: unable to write report to file");
+    return -1;
+  }
+  _internal_report_list.reports[_internal_report_list.writeIndex++] = rp;
+  _internal_report_list.writeIndex %= MAX_REPORT_BUFFER_SIZE;
+  _internal_report_list.numberOfReports++;
+  printf("\nflag: %d\n", flag);
+  // release(&_internal_report_list.lock);
+  return 0;
+}
+
 //
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
@@ -70,24 +99,8 @@ usertrap(void)
   } else {
     printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
     printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
+    recordTrap(p);
     setkilled(p);
-    struct report rp;
-  rp.pcount = 0;
-  struct proc* parent = p->parent;
-  while(parent > 0)
-  {
-    // printf("parent pid:%d\n", parent->pid);
-    rp.ppid[rp.pcount++] = parent->pid;
-    parent = parent->parent;
-  }
-  rp.pid = p->pid;
-  strncpy(rp.pname, p->name, 16);
-  rp.scause = r_scause();
-  rp.sepc = r_sepc();
-  rp.stval = r_stval();
-  _internal_report_list.reports[_internal_report_list.writeIndex++] = rp;
-  _internal_report_list.writeIndex %= MAX_REPORT_BUFFER_SIZE;
-  _internal_report_list.numberOfReports++;
   }
 
   if(killed(p))
