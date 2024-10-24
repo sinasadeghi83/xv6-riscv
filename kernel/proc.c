@@ -18,6 +18,7 @@ struct spinlock pid_lock;
 extern void forkret(void);
 static void freeproc(struct proc *p);
 
+
 extern char trampoline[]; // trampoline.S
 
 // helps ensure that wakeups of wait()ing
@@ -26,32 +27,70 @@ extern char trampoline[]; // trampoline.S
 // must be acquired before any p->lock.
 struct spinlock wait_lock;
 
+struct internal_report_list _internal_report_list; 
 
 int
-chp(struct child_processes* chpcs){
+ch_ps(struct proc **prcs){
+  int count = 0;
   struct proc* tProc = myproc();
   acquire(&tProc->lock);
-  chpcs->count = 0;
   for (struct proc* p = proc; p < &proc[NPROC]; p++){
     struct proc* parent = p->parent;
     while(parent > 0){
       if(parent->pid == tProc->pid){
-        struct proc_info prc;
-        strncpy(prc.name, p->name, 16);
-        prc.pid = p->pid;
-        if (p->parent > 0){
-          prc.ppid = p->parent->pid;
-        }else{
-          prc.ppid = 0;
-        }
-        prc.state = p->state;
-        chpcs->processes[chpcs->count++] = prc;
+        prcs[count++] = p;
         break;
       }
       parent = parent->parent;
     }
   }
   release(&tProc->lock);
+  return count;
+}
+
+int
+trprp(struct report_traps* rps){
+  int lscount = _internal_report_list.writeIndex;
+  if(lscount == 0){
+    lscount = MAX_REPORT_BUFFER_SIZE;
+  }
+
+  rps->count = 0;
+
+  struct proc* mp = myproc();
+  // printf("pid:%d\n", mp->pid);
+  for(int i = 0; i < lscount; i++){
+    struct report rp = _internal_report_list.reports[i];
+    // rps->reports[rps->count++] = rp;
+    for(int j = 0; j < rp.pcount; j++){
+      // printf("ppid:%d\n", rp.ppid[j]);
+      if(rp.ppid[j] == mp->pid){
+        rps->reports[rps->count++] = rp;
+        break;
+      }
+    }
+  }
+  return 0;
+}
+
+int
+chp(struct child_processes* chpcs){
+  struct proc* prcs[NPROC];
+  chpcs->count = ch_ps(prcs);
+
+  for (int i = 0; i < chpcs->count; i++){
+    struct proc *p = prcs[i];
+    struct proc_info prc;
+    strncpy(prc.name, p->name, 16);
+    prc.pid = p->pid;
+    if (p->parent > 0){
+      prc.ppid = p->parent->pid;
+    }else{
+      prc.ppid = 0;
+    }
+    prc.state = p->state;
+    chpcs->processes[i] = prc;
+  }
   return 0;
 }
 

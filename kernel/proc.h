@@ -1,3 +1,5 @@
+#define MAX_PARENT 10
+#define MAX_REPORT_BUFFER_SIZE 10
 // Saved registers for kernel context switches.
 struct context {
   uint64 ra;
@@ -117,3 +119,33 @@ struct child_processes {
   int count;
   struct proc_info processes[NPROC];
 };
+
+struct report {
+  int ppid[MAX_PARENT];
+  int pcount;
+  char pname[16];
+  int pid;
+  uint64 scause;
+  uint64 sepc;
+  uint64 stval;
+};
+
+struct report_traps {
+  struct report reports[MAX_REPORT_BUFFER_SIZE];
+  int count;
+};
+
+#ifndef PROC_H
+#define PROC_H
+// Define the structure type for the internal report list
+struct internal_report_list {
+    struct report reports[MAX_REPORT_BUFFER_SIZE];
+    int numberOfReports;
+    int writeIndex;
+};
+
+// Declare the variable as extern
+extern struct internal_report_list _internal_report_list;  // Declare as extern
+
+
+#endif // PROC_H

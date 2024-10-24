@@ -1,6 +1,8 @@
 struct stat;
 struct proc_info;
 struct child_processes;
+struct report;
+struct report_traps;
 
 enum procstate;
 
@@ -26,7 +28,8 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
-int chp(void *);
+int chp(struct child_processes*);
+int trprp(struct report_traps*);
 
 // ulib.c
 int stat(const char*, struct stat*);

@@ -109,3 +109,21 @@ sys_chp(void)
   }
   return e;
 }
+
+//returns trap reports of children and grand childrens of a process
+uint64
+sys_trprp(void)
+{
+  struct report_traps* reports;
+  struct report_traps result_reports;
+  argaddr(0, (uint64 *)&reports);
+
+  int e = trprp(&result_reports);
+
+  struct proc *p = myproc();
+
+  if(copyout(p->pagetable, (uint64)reports, (char*)&result_reports, sizeof(result_reports)) < 0){
+    return -1;
+  }
+  return e;
+}
