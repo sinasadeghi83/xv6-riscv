@@ -11,6 +11,7 @@ struct superblock;
 struct proc_info;
 struct child_processes;
 struct report_traps;
+struct report;
 
 // bio.c
 void            binit(void);
@@ -37,6 +38,7 @@ int             fileread(struct file*, uint64, int n);
 int             filestat(struct file*, uint64 addr);
 int             filewrite(struct file*, uint64, int n);
 int             fileappend(char *filename, void *data, int struct_size);
+int filereadend(char *filename, void *data, int struct_size);
 
 // fs.c
 void            fsinit(int);

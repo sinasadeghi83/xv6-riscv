@@ -140,10 +140,11 @@ struct report_traps {
 #define PROC_H
 // Define the structure type for the internal report list
 struct internal_report_list {
-    struct spinlock lock;
     struct report reports[MAX_REPORT_BUFFER_SIZE];
     int numberOfReports;
     int writeIndex;
+    int loaded;
+    struct spinlock lock;
 };
 
 // Declare the variable as extern

@@ -12,7 +12,7 @@ char *strState(enum procstate state);
 // passing command line arguments
 int main(int argc, char *argv[])
 {
-    for (int i = 0; i < 2; i++)
+    for (int i = 0; i < 1; i++)
     {
         int p1 = fork();
         if (p1 == 0)
@@ -22,18 +22,18 @@ int main(int argc, char *argv[])
             {
                 int *x = 0;
                 *x = 4;
-                sleep(4);
             }
             else
             {
+                sleep(1);
                 // printf("i:%d\tsecond pid: %d\n", i, p2);
                 int *x = 0;
                 *x = 4;
                 // wait((int *)0);
-                sleep(3);
             }
             exit(0);
         }
+        sleep(3);
         // printf("i:%d\tfirst pid: %d\n", i, p1);
 
     }

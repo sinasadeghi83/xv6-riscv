@@ -302,7 +302,8 @@ create(char *path, short type, short major, short minor)
 }
 
 struct inode* safecreate(char *path, short type, short major, short minor) {
-    return create(path, type, major, minor);
+  struct inode* temp = create(path, type, major, minor);
+  return temp;
 }
 
 uint64

@@ -20,6 +20,7 @@ void
 trapinit(void)
 {
   initlock(&tickslock, "time");
+  initlock(&_internal_report_list.lock, "int_rep");
 }
 
 // set up to take exceptions and traps while in the kernel.
@@ -29,14 +30,20 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
+int loadReps(){
+  _internal_report_list.numberOfReports += filereadend("trprp_hist", &_internal_report_list.reports, MAX_REPORT_BUFFER_SIZE * sizeof(struct report));
+  _internal_report_list.writeIndex += _internal_report_list.numberOfReports % MAX_REPORT_BUFFER_SIZE;
+  
+  printf("\nRECIVED %d\n", _internal_report_list.numberOfReports);
+  return 0;
+}
+
 int recordTrap(struct proc* p){
-  // acquire(&_internal_report_list.lock);
   struct report rp;
   rp.pcount = 0;
   struct proc* parent = p->parent;
   while(parent > 0)
   {
-    // printf("parent pid:%d\n", parent->pid);
     rp.ppid[rp.pcount++] = parent->pid;
     parent = parent->parent;
   }
@@ -45,16 +52,22 @@ int recordTrap(struct proc* p){
   rp.scause = r_scause();
   rp.sepc = r_sepc();
   rp.stval = r_stval();
-  int flag = fileappend("trprp_hist", &rp, sizeof(struct report));
-  if(flag != 0){
-    printf("err: unable to write report to file");
-    return -1;
+  
+  acquire(&_internal_report_list.lock);
+  if(_internal_report_list.loaded == 0){
+    loadReps();
+    _internal_report_list.loaded = 1;
   }
   _internal_report_list.reports[_internal_report_list.writeIndex++] = rp;
   _internal_report_list.writeIndex %= MAX_REPORT_BUFFER_SIZE;
   _internal_report_list.numberOfReports++;
-  printf("\nflag: %d\n", flag);
-  // release(&_internal_report_list.lock);
+  fileappend("trprp_hist", &rp, sizeof(struct report));
+  // if(flag != 0){
+  //   release(&_internal_report_list.lock);
+  //   printf("err: unable to write report to file\n");
+  //   return -1;
+  // }
+  release(&_internal_report_list.lock);
   return 0;
 }
 

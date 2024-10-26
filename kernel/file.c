@@ -16,7 +16,8 @@
 
 #define BUFSIZE 512
 
-extern struct inode* safecreate(char *path, short type, short major, short minor);
+extern struct inode *safecreate(char *path, short type, short major, short minor);
+extern struct report *data;
 
 struct devsw devsw[NDEV];
 struct
@@ -111,6 +112,15 @@ int filestat(struct file *f, uint64 addr)
   return -1;
 }
 
+int readf(struct file *f, int user_src, uint64 addr, int n){
+  int r = 0;
+  ilock(f->ip);
+  if ((r = readi(f->ip, user_src, addr, f->off, n)) > 0)
+    f->off += r;
+  iunlock(f->ip);
+  return r;
+}
+
 // Read from file f.
 // addr is a user virtual address.
 int fileread(struct file *f, uint64 addr, int n)
@@ -130,12 +140,8 @@ int fileread(struct file *f, uint64 addr, int n)
       return -1;
     r = devsw[f->major].read(1, addr, n);
   }
-  else if (f->type == FD_INODE)
-  {
-    ilock(f->ip);
-    if ((r = readi(f->ip, 1, addr, f->off, n)) > 0)
-      f->off += r;
-    iunlock(f->ip);
+  else if (f->type == FD_INODE){  
+    r = readf(f, 1, addr, n);
   }
   else
   {
@@ -145,75 +151,133 @@ int fileread(struct file *f, uint64 addr, int n)
   return r;
 }
 
+int writef(struct file *f, int user_src, uint64 addr, int n)
+{
+  int r, ret = 0;
+  // write a few blocks at a time to avoid exceeding
+  // the maximum log transaction size, including
+  // i-node, indirect block, allocation blocks,
+  // and 2 blocks of slop for non-aligned writes.
+  // this really belongs lower down, since writei()
+  // might be writing a device like the console.
+  int max = ((MAXOPBLOCKS - 1 - 1 - 2) / 2) * BSIZE;
+  int i = 0;
+  while (i < n)
+  {
+    int n1 = n - i;
+    if (n1 > max)
+      n1 = max;
+    ilock(f->ip);
+    if ((r = writei(f->ip, user_src, addr + i, f->off, n1)) > 0)
+      f->off += r;
+    iunlock(f->ip);
+    if (r != n1)
+    {
+      // error from writei
+      break;
+    }
+    i += r;
+  }
+  ret = (i == n ? n : -1);
+  return ret;
+}
+
+int filereadend(char *filename, void *data, int struct_size){
+  begin_op();
+  struct file *f;
+  struct inode *ip;
+  int n;
+
+  ip = namei(filename);
+  if (ip == 0){
+    printf("\nkernel_read_end: no such file %s\n", filename);
+  end_op();
+    return 0;
+  }
+
+  f = filealloc();
+  if (f == 0)
+  {
+    printf("\nkernel_append_struct: failed to allocate file\n");
+  end_op();
+    return -1;
+  }
+
+  f->ip = ip;
+  int fileSize = (int)f->ip->size;
+
+  if(fileSize - struct_size > 0){
+    f->off = f->ip->size - (uint)struct_size;
+  }else{
+    f->off = 0;
+  }
+  f->readable = 1;
+  f->writable = 0;
+  f->type = FD_INODE;
+
+  int readsize = fileSize - f->off;
+
+  printf("before read\nreadsize: %d\n%d\n", readsize,f->ip->size);
+  if((n = readf(f, 0, (uint64)data, readsize)) != readsize){
+    printf("\nkernel_read_struct: failed to read struct from file\n");
+    fileclose(f);
+    return -1;
+  }
+  printf("\nafter read\n");
+  end_op();
+  printf("\nafter_endop\n");
+
+  return readsize;
+}
+
 // Kernel function to append a struct to a file
 int fileappend(char *filename, void *data, int struct_size)
 {
+  begin_op();
   struct file *f;
   struct inode *ip;
-  int filesize = 0;
   int n;
-  int fd;
-
-  begin_op();
   // Open the file in read-write mode (kernel-level)
   ip = namei(filename);
+  printf("\nafter namei\n");
   if (ip == 0)
   {
     // If the file doesn't exist, create it
     ip = safecreate(filename, T_FILE, 0, 0);
     if (ip == 0)
     {
-      printf("kernel_append_struct: failed to create file %s\n", filename);
+      printf("\nkernel_append_struct: failed to create file %s\n", filename);
+  end_op();
       return -1;
     }
   }
+  printf("\nbefore filealloc\n");
   f = filealloc();
-  struct proc* p = myproc();
-  for(fd = 0; fd < NOFILE; fd++){
-    if(p->ofile[fd] == 0){
-      p->ofile[fd] = f;
-      break;
-    }
-  }
-
   if (f == 0)
   {
-    printf("kernel_append_struct: failed to allocate file\n");
+    printf("\nkernel_append_struct: failed to allocate file\n");
+  end_op();
     return -1;
   }
 
   f->ip = ip;
-  printf("\nbefore ilock\n");
-  ilock(f->ip);
-  printf("\nafter ilock\n");
-  f->off = 0; // Start at the beginning
+  f->off = f->ip->size; // Start at the end
   f->readable = 1;
   f->writable = 1;
-
-  // Now read the file until the end to calculate its current size
-  while ((n = fileread(f, 0, sizeof(struct_size))) > 0)
-  {
-    filesize += n;
-  }
-
-  // Now that we've reached the end, set the offset to the end for appending
-  f->off = filesize;
+  f->type = FD_INODE;
+  printf("\nbefore write\n");
 
   // Write the struct data to the file at the end
-  if (filewrite(f, (uint64)data, struct_size) != struct_size)
+  if ((n = writef(f, 0, (uint64)data, struct_size)) != struct_size)
   {
-    printf("kernel_append_struct: failed to write struct to file\n");
+    printf("\nkernel_append_struct: failed to write struct to file\n");
     fileclose(f);
     return -1;
   }
-
-  printf("\nbefore iunlock\n");
-  iunlock(ip);
-  printf("\nbefore fileclose\n");
-  fileclose(f);
-  p->ofile[fd] = 0;
-
+  printf("\nafter write\n");
   end_op();
+  printf("\nafter_endop\n");
+
   return 0;
 }
 
@@ -221,7 +285,7 @@ int fileappend(char *filename, void *data, int struct_size)
 // addr is a user virtual address.
 int filewrite(struct file *f, uint64 addr, int n)
 {
-  int r, ret = 0;
+  int ret = 0;
 
   if (f->writable == 0)
     return -1;
@@ -238,35 +302,7 @@ int filewrite(struct file *f, uint64 addr, int n)
   }
   else if (f->type == FD_INODE)
   {
-    // write a few blocks at a time to avoid exceeding
-    // the maximum log transaction size, including
-    // i-node, indirect block, allocation blocks,
-    // and 2 blocks of slop for non-aligned writes.
-    // this really belongs lower down, since writei()
-    // might be writing a device like the console.
-    int max = ((MAXOPBLOCKS - 1 - 1 - 2) / 2) * BSIZE;
-    int i = 0;
-    while (i < n)
-    {
-      int n1 = n - i;
-      if (n1 > max)
-        n1 = max;
-
-      begin_op();
-      ilock(f->ip);
-      if ((r = writei(f->ip, 1, addr + i, f->off, n1)) > 0)
-        f->off += r;
-      iunlock(f->ip);
-      end_op();
-
-      if (r != n1)
-      {
-        // error from writei
-        break;
-      }
-      i += r;
-    }
-    ret = (i == n ? n : -1);
+    ret = writef(f, 1, addr, n);
   }
   else
   {
