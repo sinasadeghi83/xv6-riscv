@@ -1,4 +1,10 @@
-xv6 is a re-implementation of Dennis Ritchie's and Ken Thompson's Unix
+I have added chp syscall for seeing child processes. Test with chptest.<br><br>
+Then I have added trprp syscall to see traps. I tries to add file functionality but it throws unknown error(panic: sched lock). If you want to test only trap report you can comment fileappend line of recordTrap() in trap.c.<br>
+Use trprptest to test trap report.
+
+
+<tr>
+<br><br><br>xv6 is a re-implementation of Dennis Ritchie's and Ken Thompson's Unix
 Version 6 (v6).  xv6 loosely follows the structure and style of v6,
 but is implemented for a modern RISC-V multiprocessor using ANSI C.
 
