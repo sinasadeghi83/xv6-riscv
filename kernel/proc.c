@@ -17,7 +17,7 @@ struct spinlock pid_lock;
 
 extern void forkret(void);
 static void freeproc(struct proc *p);
-static struct thread *allocthread(void);
+static struct thread *allocthread(struct proc *p);
 static void freethread(struct thread *t);
 
 extern char trampoline[]; // trampoline.S
@@ -33,43 +33,34 @@ struct internal_report_list _internal_report_list;
 // int loadInternalReports(){
 // }
 
-int join(void){
+int join(void)
+{
   return 0;
 }
 
-int clone(void (*fn)(void *), void *arg, void *stack){
+int clone(void (*fn)(void *), void *arg, void *stack)
+{
   int pid;
   struct thread *t;
   struct proc *p = myproc();
 
-  // Allocate process.
-  if ((t = allocthread()) == 0)
+  // Allocate thread.
+  if ((t = allocthread(p)) == 0)
   {
+    printf("\nthe allocthread returns 0\n");
     return -1;
-  }
-
-  //Create main thread if not exist
-  if (p->threads[0].state == THREAD_FREE){
-    struct thread *mt;
-    if ((mt=allocthread()) == 0){
-      freethread(t);
-      return -1;
-    }
-
-    *(mt->trapframe) = *(p->trapframe);
-    p->threads[0] = *mt;
   }
 
   // copy saved user registers.
   *(t->trapframe) = *(p->trapframe);
 
-  // Cause fork to return 0 in the child.
-  t->trapframe->a0 = 0;
   t->trapframe->sp = (uint64)(stack) + PGSIZE;
   t->trapframe->epc = (uint64)fn;
 
-  for(int i=0; i < MAX_THREAD; i++){
-    if(p->threads[i].state == THREAD_FREE){
+  for (int i = 0; i < MAX_THREAD; i++)
+  {
+    if (p->threads[i].state == THREAD_FREE)
+    {
       p->threads[i] = *t;
       break;
     }
@@ -82,36 +73,38 @@ int clone(void (*fn)(void *), void *arg, void *stack){
 // and return with p->lock held.
 // If there are no free procs, or a memory allocation fails, return 0.
 static struct thread *
-allocthread(void)
+allocthread(struct proc *p)
 {
-  struct proc *p = myproc();
-  struct thread *t;  
-
-  for (int i=0; i < MAX_THREAD; i++)
+  if (p == 0)
   {
-    t = &p->threads[i];
-    if (t->state == THREAD_FREE)
+    return 0;
+  }
+  int i;
+  for (i = 0; i < MAX_THREAD; i++)
+  {
+    acquire(&p->lock);
+    if (p->threads[i].state == THREAD_FREE)
     {
-      break;
       goto found;
     }
+    release(&p->lock);
   }
   return 0;
 
 found:
-  t->state = THREAD_RUNNABLE;
+  p->threads[i].state = THREAD_RUNNABLE;
+  p->threads[i].id = i;
 
   // Allocate a trapframe page.
-  if ((t->trapframe = (struct trapframe *)kalloc()) == 0)
+  if ((p->threads[i].trapframe = (struct trapframe *)kalloc()) == 0)
   {
-    freethread(t);
+    freethread(&p->threads[i]);
+    release(&p->lock);
     return 0;
   }
-
-  return t;
-
+  release(&p->lock);
+  return &p->threads[i];
 }
-
 
 int ch_ps(struct proc **prcs)
 {
@@ -220,7 +213,8 @@ void procinit(void)
     p->state = UNUSED;
     p->kstack = KSTACK((int)(p - proc));
     struct thread *t;
-    for(t = p->threads; t < &p->threads[MAX_THREAD]; t++){
+    for (t = p->threads; t < &p->threads[MAX_THREAD]; t++)
+    {
       t->state = THREAD_FREE;
     }
   }
@@ -418,7 +412,7 @@ uchar initcode[] = {
 void userinit(void)
 {
   struct proc *p;
-  // struct thread *t;
+  struct thread *t;
 
   p = allocproc();
   initproc = p;
@@ -436,12 +430,16 @@ void userinit(void)
   p->cwd = namei("/");
 
   p->state = RUNNABLE;
-  // t = allocthread();
-  allocthread();
-  // p->threads[0] = *t;
-  // t = &p->threads[0];
-  // p->current_thread = t;
-  // *(p->trapframe) = *(t->trapframe);
+  t = &p->threads[0];
+  p->current_thread = t;
+  t->state = THREAD_RUNNABLE;
+  // Allocate a trapframe page.
+  if ((t->trapframe = (struct trapframe *)kalloc()) == 0)
+  {
+    freethread(t);
+    panic("unable to make thread trapframe");
+  }
+  *(t->trapframe) = *(p->trapframe);
 
   release(&p->lock);
 }
@@ -508,7 +506,26 @@ int fork(void)
 
   pid = np->pid;
 
+  // acquire(&p->lock);
+  for (i = 0; i < MAX_THREAD; i++)
+  {
+    if (p->threads[i].state == THREAD_FREE)
+    {
+      continue;
+    }
+    np->threads[i] = p->threads[i];
+    if ((np->threads[i].trapframe = (struct trapframe *)kalloc()) == 0)
+    {
+      freethread(&np->threads[i]);
+      release(&np->lock);
+      return -1;
+    }
+    *(np->threads[i].trapframe) = *(p->threads[i].trapframe);
+  }
+  np->current_thread = &(np->threads[0]);
+
   release(&np->lock);
+  // release(&p->lock);
 
   acquire(&wait_lock);
   np->parent = p;
@@ -543,64 +560,43 @@ void reparent(struct proc *p)
 void exit(int status)
 {
   struct proc *p = myproc();
-  int threadCount = 0;
-  struct thread *t;
-  for(t = p->threads; t < &p->threads[MAX_THREAD]; t++){
-    if(t->state != THREAD_FREE){
-      threadCount++;
-    }
-  }
-  if (threadCount)
-  {
-    acquire(&p->lock);
-    p->xstate = status;
-    if(threadCount == 1){
-      p->state = ZOMBIE;
-    }
-    release(&p->lock);
-    wakeup(p->parent);
-    sched();
-  }
-  else
-  {
-    if (p == initproc)
-      panic("init exiting");
+  if (p == initproc)
+    panic("init exiting");
 
-    // Close all open files.
-    for (int fd = 0; fd < NOFILE; fd++)
+  // Close all open files.
+  for (int fd = 0; fd < NOFILE; fd++)
+  {
+    if (p->ofile[fd])
     {
-      if (p->ofile[fd])
-      {
-        struct file *f = p->ofile[fd];
-        fileclose(f);
-        p->ofile[fd] = 0;
-      }
+      struct file *f = p->ofile[fd];
+      fileclose(f);
+      p->ofile[fd] = 0;
     }
-
-    begin_op();
-    iput(p->cwd);
-    end_op();
-    p->cwd = 0;
-
-    acquire(&wait_lock);
-
-    // Give any children to init.
-    reparent(p);
-
-    // Parent might be sleeping in wait().
-    wakeup(p->parent);
-
-    acquire(&p->lock);
-
-    p->xstate = status;
-    p->state = ZOMBIE;
-
-    release(&wait_lock);
-
-    // Jump into the scheduler, never to return.
-    sched();
-    panic("zombie exit");
   }
+
+  begin_op();
+  iput(p->cwd);
+  end_op();
+  p->cwd = 0;
+
+  acquire(&wait_lock);
+
+  // Give any children to init.
+  reparent(p);
+
+  // Parent might be sleeping in wait().
+  wakeup(p->parent);
+
+  acquire(&p->lock);
+
+  p->xstate = status;
+  p->state = ZOMBIE;
+
+  release(&wait_lock);
+
+  // Jump into the scheduler, never to return.
+  sched();
+  panic("zombie exit");
 }
 
 // Wait for a child process to exit and return its pid.
@@ -657,6 +653,36 @@ int wait(uint64 addr)
   }
 }
 
+void set_thread_state(struct thread *t, struct proc *p){
+  switch (p->state)
+  {
+  case UNUSED:
+    t->state = THREAD_FREE;
+    break;
+
+  case RUNNABLE:
+  case USED:
+    t->state = THREAD_RUNNABLE;
+    break;
+  
+  case RUNNING:
+    t->state = THREAD_RUNNING;
+    break;
+  
+  case SLEEPING:
+    t->state = THREAD_RUNNABLE;
+    break;
+
+  case ZOMBIE:
+    t->state = THREAD_FREE;
+    break;
+  
+  default:
+    t->state = THREAD_FREE;
+    break;
+  }
+}
+
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
@@ -667,7 +693,7 @@ int wait(uint64 addr)
 void scheduler(void)
 {
   struct proc *p;
-  // struct thread *t;
+  struct thread *t = 0;
   struct cpu *c = mycpu();
 
   c->proc = 0;
@@ -682,12 +708,31 @@ void scheduler(void)
     for (p = proc; p < &proc[NPROC]; p++)
     {
       acquire(&p->lock);
-      if(p->state == RUNNABLE){
-        
-        // if(p->current_thread->state == THREAD_RUNNABLE){
-        //   t = p->current_thread;
-        //   t->state = THREAD_RUNNING;
-        // }
+      if (p->state == RUNNABLE)
+      {
+        if(p->current_thread != THREAD_FREE){
+          *(p->current_thread->trapframe) = *(p->trapframe);
+          set_thread_state(p->current_thread, p);
+        }
+        for (t = p->threads; t < &p->threads[MAX_THREAD]; t++)
+        {
+          if (t->state == THREAD_RUNNABLE)
+          {
+            p->current_thread = t;
+            break;
+          }
+        }
+        if (p->current_thread->state == THREAD_RUNNABLE)
+        {
+          *(p->trapframe) = *(t->trapframe);
+          t = p->current_thread;
+          t->state = THREAD_RUNNING;
+        }
+        else
+        {
+          release(&p->lock);
+          continue;
+        }
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
         // before jumping back to us.
@@ -696,18 +741,14 @@ void scheduler(void)
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
+        if (t != 0)
+        {
+          set_thread_state(t, p);
+          *(t->trapframe) = *(p->trapframe);
+        }
         // It should have changed its p->state before coming back.
         c->proc = 0;
         found = 1;
-
-        // for(t = p->threads; t < &p->threads[MAX_THREAD]; t++){
-        //   if(t->state == THREAD_RUNNABLE){
-        //     p->trapframe = t->trapframe;
-        //     p->current_thread = t;
-        //     break;
-        //   }
-        // }
-        
       }
       release(&p->lock);
     }
@@ -752,9 +793,6 @@ void yield(void)
   struct proc *p = myproc();
   acquire(&p->lock);
   p->state = RUNNABLE;
-  if(p->current_thread != THREAD_FREE){
-    p->current_thread->state = THREAD_RUNNABLE;
-  }
   sched();
   release(&p->lock);
 }
