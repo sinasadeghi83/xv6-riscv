@@ -133,6 +133,9 @@ void
 usertrapret(void)
 {
   struct proc *p = myproc();
+  // if(p->current_thread != THREAD_FREE){
+  //   p->trapframe = p->current_thread->trapframe;
+  // }
   // we're about to switch the destination of traps from
   // kerneltrap() to usertrap(), so turn off interrupts until
   // we're back in user space, where usertrap() is correct.

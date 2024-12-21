@@ -30,6 +30,9 @@ int sleep(int);
 int uptime(void);
 int chp(struct child_processes*);
 int trprp(struct report_traps*);
+int clone(void (*fn)(void*), void* arg, void *stack);
+int join(void);
+
 
 // ulib.c
 int stat(const char*, struct stat*);
@@ -45,6 +48,8 @@ void* memset(void*, int, uint);
 int atoi(const char*);
 int memcmp(const void *, const void *, uint);
 void *memcpy(void *, const void *, uint);
+int thread_create(void (*fn)(void*), void* arg);
+int thread_join();
 
 // umalloc.c
 void* malloc(uint);

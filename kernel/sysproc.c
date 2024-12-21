@@ -127,3 +127,24 @@ sys_trprp(void)
   }
   return e;
 }
+
+uint64
+sys_clone(void)
+{
+  void (*fn)(void*);
+  void* arg;
+  void* stack;
+  argaddr(0, (uint64 *)&fn);
+  argaddr(1, (uint64*) &arg);
+  argaddr(2, (uint64*) &stack);
+
+  int e = clone(fn, arg, stack);
+
+  return e;
+}
+
+uint64
+sys_join(void)
+{
+  return 0;
+}

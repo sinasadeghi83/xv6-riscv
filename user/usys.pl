@@ -38,3 +38,5 @@ entry("sleep");
 entry("uptime");
 entry("chp");
 entry("trprp");
+entry("clone");
+entry("join");
