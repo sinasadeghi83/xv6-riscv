@@ -53,21 +53,21 @@ int recordTrap(struct proc* p){
   rp.sepc = r_sepc();
   rp.stval = r_stval();
   
-  acquire(&_internal_report_list.lock);
-  if(_internal_report_list.loaded == 0){
-    loadReps();
-    _internal_report_list.loaded = 1;
-  }
-  _internal_report_list.reports[_internal_report_list.writeIndex++] = rp;
-  _internal_report_list.writeIndex %= MAX_REPORT_BUFFER_SIZE;
-  _internal_report_list.numberOfReports++;
-  fileappend("trprp_hist", &rp, sizeof(struct report));
+  // acquire(&_internal_report_list.lock);
+  // if(_internal_report_list.loaded == 0){
+  //   loadReps();
+  //   _internal_report_list.loaded = 1;
+  // }
+  // _internal_report_list.reports[_internal_report_list.writeIndex++] = rp;
+  // _internal_report_list.writeIndex %= MAX_REPORT_BUFFER_SIZE;
+  // _internal_report_list.numberOfReports++;
+  // fileappend("trprp_hist", &rp, sizeof(struct report));
   // if(flag != 0){
   //   release(&_internal_report_list.lock);
   //   printf("err: unable to write report to file\n");
   //   return -1;
   // }
-  release(&_internal_report_list.lock);
+  // release(&_internal_report_list.lock);
   return 0;
 }
 

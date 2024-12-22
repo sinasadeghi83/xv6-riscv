@@ -48,7 +48,7 @@ void* memset(void*, int, uint);
 int atoi(const char*);
 int memcmp(const void *, const void *, uint);
 void *memcpy(void *, const void *, uint);
-int thread_create(void (*fn)(void*), void* arg);
+int thread_create(void (*fn)(void*), void* arg, void* stack);
 int thread_join();
 
 // umalloc.c

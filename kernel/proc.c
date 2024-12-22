@@ -38,6 +38,10 @@ int join(void)
   return 0;
 }
 
+void exitThread(){
+  exit(0);
+}
+
 int clone(void (*fn)(void *), void *arg, void *stack)
 {
   int pid;
@@ -56,15 +60,8 @@ int clone(void (*fn)(void *), void *arg, void *stack)
 
   t->trapframe->sp = (uint64)(stack) + PGSIZE;
   t->trapframe->epc = (uint64)fn;
-
-  for (int i = 0; i < MAX_THREAD; i++)
-  {
-    if (p->threads[i].state == THREAD_FREE)
-    {
-      p->threads[i] = *t;
-      break;
-    }
-  }
+  t->trapframe->a0 = (uint64)arg;
+  t->trapframe->ra = (uint64)exitThread;
   return pid;
 }
 
@@ -563,6 +560,14 @@ void exit(int status)
   if (p == initproc)
     panic("init exiting");
 
+  for (struct thread *t = p->threads; t < &p->threads[MAX_THREAD]; t++)
+  {
+    if (t->state == THREAD_RUNNABLE)
+    {
+      return;
+    }
+  }
+
   // Close all open files.
   for (int fd = 0; fd < NOFILE; fd++)
   {
@@ -653,7 +658,8 @@ int wait(uint64 addr)
   }
 }
 
-void set_thread_state(struct thread *t, struct proc *p){
+void set_thread_state(struct thread *t, struct proc *p)
+{
   switch (p->state)
   {
   case UNUSED:
@@ -664,11 +670,11 @@ void set_thread_state(struct thread *t, struct proc *p){
   case USED:
     t->state = THREAD_RUNNABLE;
     break;
-  
+
   case RUNNING:
     t->state = THREAD_RUNNING;
     break;
-  
+
   case SLEEPING:
     t->state = THREAD_RUNNABLE;
     break;
@@ -676,7 +682,7 @@ void set_thread_state(struct thread *t, struct proc *p){
   case ZOMBIE:
     t->state = THREAD_FREE;
     break;
-  
+
   default:
     t->state = THREAD_FREE;
     break;
@@ -710,23 +716,18 @@ void scheduler(void)
       acquire(&p->lock);
       if (p->state == RUNNABLE)
       {
-        if(p->current_thread != THREAD_FREE){
+        t = p->current_thread;
+        if (t != THREAD_FREE)
+        {
           *(p->current_thread->trapframe) = *(p->trapframe);
           set_thread_state(p->current_thread, p);
         }
-        for (t = p->threads; t < &p->threads[MAX_THREAD]; t++)
-        {
-          if (t->state == THREAD_RUNNABLE)
-          {
-            p->current_thread = t;
-            break;
-          }
-        }
+
         if (p->current_thread->state == THREAD_RUNNABLE)
         {
-          *(p->trapframe) = *(t->trapframe);
-          t = p->current_thread;
-          t->state = THREAD_RUNNING;
+        *(p->trapframe) = *(t->trapframe);
+        t = p->current_thread;
+        t->state = THREAD_RUNNING;
         }
         else
         {
@@ -743,9 +744,23 @@ void scheduler(void)
         // Process is done running for now.
         if (t != 0)
         {
-          set_thread_state(t, p);
-          *(t->trapframe) = *(p->trapframe);
+        set_thread_state(t, p);
+        *(t->trapframe) = *(p->trapframe);
         }
+
+        for (t = p->threads; t < &p->threads[MAX_THREAD]; t++)
+        {
+          if (t->state == THREAD_RUNNABLE)
+          {
+            p->current_thread = t;
+            if (p->state == ZOMBIE)
+            {
+              p->state = RUNNABLE;
+            }
+            break;
+          }
+        }
+
         // It should have changed its p->state before coming back.
         c->proc = 0;
         found = 1;

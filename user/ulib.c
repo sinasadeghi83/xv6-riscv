@@ -1,11 +1,17 @@
 #include "kernel/types.h"
+#include "user/user.h"
 #include "kernel/stat.h"
 #include "kernel/fcntl.h"
-#include "user/user.h"
 #include "kernel/riscv.h"
 #include "kernel/param.h"
 #include "kernel/spinlock.h"
 #include "kernel/proc.h"
+
+
+int thread_create(void (*fn)(void *), void *arg, void *stack)
+{
+  return clone(fn, arg, stack);
+}
 
 //
 // wrapper so that it's OK if main() does not call exit().
@@ -149,13 +155,6 @@ void *
 memcpy(void *dst, const void *src, uint n)
 {
   return memmove(dst, src, n);
-}
-
-int thread_create(void (*fn)(void *), void *arg)
-{
-  // void *stack = malloc(PGSIZE);
-  // return clone(fn, arg, stack);
-  return 0;
 }
 
 int thread_join()
