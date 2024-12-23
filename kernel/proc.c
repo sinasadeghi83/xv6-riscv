@@ -38,11 +38,6 @@ int join(void)
   return 0;
 }
 
-void exitThread()
-{
-  exit(0);
-}
-
 int clone(void (*fn)(void *), void *arg, void *stack)
 {
   int pid;
@@ -335,9 +330,10 @@ freeproc(struct proc *p)
 {
   for (struct thread *t = p->threads; t < &p->threads[MAX_THREAD]; t++)
   {
-    if (t->state == THREAD_RUNNABLE || t->state == THREAD_RUNNING || t->state == THREAD_JOINED)
+    freethread(t);
+    if (p->current_thread == t)
     {
-      freethread(t);
+      p->trapframe = 0;
     }
   }
 
@@ -572,25 +568,17 @@ void exit(int status)
   if (p == initproc)
     panic("init exiting");
 
-  for (struct thread *t = p->threads; t < &p->threads[MAX_THREAD]; t++)
-  {
-    acquire(&p->lock);
-    if (t->state == THREAD_RUNNABLE || t->state == THREAD_RUNNING || t->state == THREAD_JOINED)
-    {
-      freethread(p->current_thread);
-      p->state = RUNNABLE;
-      release(&p->lock);
-      return;
-    }
-    release(&p->lock);
-  }
+  freethread(p->current_thread);
+  p->trapframe = 0;
 
   for (struct thread *t = p->threads; t < &p->threads[MAX_THREAD]; t++)
   {
     acquire(&p->lock);
     if (t->state == THREAD_RUNNABLE || t->state == THREAD_RUNNING || t->state == THREAD_JOINED)
     {
-      freethread(t);
+      p->state = RUNNABLE;
+      release(&p->lock);
+      return;
     }
     release(&p->lock);
   }
@@ -718,7 +706,7 @@ void set_thread_state(struct thread *t, struct proc *p)
 
 struct thread *find_runnable_thread(struct proc *p)
 {
-  struct thread* t;
+  struct thread *t;
   for (t = p->threads; t < &p->threads[MAX_THREAD]; t++)
   {
     if (t->state == THREAD_RUNNABLE)
@@ -761,9 +749,10 @@ void scheduler(void)
         if (t->state == THREAD_FREE)
         {
           t = find_runnable_thread(p);
-          if(t)
+          if (t)
             p->current_thread = t;
-          else{
+          else
+          {
             release(&p->lock);
             continue;
           }
