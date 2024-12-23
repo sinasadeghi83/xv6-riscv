@@ -38,7 +38,8 @@ int join(void)
   return 0;
 }
 
-void exitThread(){
+void exitThread()
+{
   exit(0);
 }
 
@@ -61,7 +62,7 @@ int clone(void (*fn)(void *), void *arg, void *stack)
   t->trapframe->sp = (uint64)(stack) + PGSIZE;
   t->trapframe->epc = (uint64)fn;
   t->trapframe->a0 = (uint64)arg;
-  t->trapframe->ra = (uint64)exitThread;
+  // t->trapframe->ra = (uint64)exitThread;
   return pid;
 }
 
@@ -332,6 +333,14 @@ freethread(struct thread *t)
 static void
 freeproc(struct proc *p)
 {
+  for (struct thread *t = p->threads; t < &p->threads[MAX_THREAD]; t++)
+  {
+    if (t->state == THREAD_RUNNABLE || t->state == THREAD_RUNNING || t->state == THREAD_JOINED)
+    {
+      freethread(t);
+    }
+  }
+
   if (p->trapframe)
     kfree((void *)p->trapframe);
   p->trapframe = 0;
@@ -427,16 +436,14 @@ void userinit(void)
   p->cwd = namei("/");
 
   p->state = RUNNABLE;
+
   t = &p->threads[0];
+
   p->current_thread = t;
+
   t->state = THREAD_RUNNABLE;
-  // Allocate a trapframe page.
-  if ((t->trapframe = (struct trapframe *)kalloc()) == 0)
-  {
-    freethread(t);
-    panic("unable to make thread trapframe");
-  }
-  *(t->trapframe) = *(p->trapframe);
+  t->id = 0;
+  t->trapframe = p->trapframe;
 
   release(&p->lock);
 }
@@ -503,7 +510,6 @@ int fork(void)
 
   pid = np->pid;
 
-  // acquire(&p->lock);
   for (i = 0; i < MAX_THREAD; i++)
   {
     if (p->threads[i].state == THREAD_FREE)
@@ -511,6 +517,14 @@ int fork(void)
       continue;
     }
     np->threads[i] = p->threads[i];
+
+    if (i == p->current_thread->id)
+    {
+      np->current_thread = &np->threads[i];
+      np->current_thread->trapframe = np->trapframe;
+      continue;
+    }
+
     if ((np->threads[i].trapframe = (struct trapframe *)kalloc()) == 0)
     {
       freethread(&np->threads[i]);
@@ -519,10 +533,8 @@ int fork(void)
     }
     *(np->threads[i].trapframe) = *(p->threads[i].trapframe);
   }
-  np->current_thread = &(np->threads[0]);
 
   release(&np->lock);
-  // release(&p->lock);
 
   acquire(&wait_lock);
   np->parent = p;
@@ -562,10 +574,25 @@ void exit(int status)
 
   for (struct thread *t = p->threads; t < &p->threads[MAX_THREAD]; t++)
   {
-    if (t->state == THREAD_RUNNABLE)
+    acquire(&p->lock);
+    if (t->state == THREAD_RUNNABLE || t->state == THREAD_RUNNING || t->state == THREAD_JOINED)
     {
+      freethread(p->current_thread);
+      p->state = RUNNABLE;
+      release(&p->lock);
       return;
     }
+    release(&p->lock);
+  }
+
+  for (struct thread *t = p->threads; t < &p->threads[MAX_THREAD]; t++)
+  {
+    acquire(&p->lock);
+    if (t->state == THREAD_RUNNABLE || t->state == THREAD_RUNNING || t->state == THREAD_JOINED)
+    {
+      freethread(t);
+    }
+    release(&p->lock);
   }
 
   // Close all open files.
@@ -689,6 +716,19 @@ void set_thread_state(struct thread *t, struct proc *p)
   }
 }
 
+struct thread *find_runnable_thread(struct proc *p)
+{
+  struct thread* t;
+  for (t = p->threads; t < &p->threads[MAX_THREAD]; t++)
+  {
+    if (t->state == THREAD_RUNNABLE)
+    {
+      return t;
+    }
+  }
+  return 0;
+}
+
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
@@ -717,51 +757,31 @@ void scheduler(void)
       if (p->state == RUNNABLE)
       {
         t = p->current_thread;
-        if (t != THREAD_FREE)
-        {
-          *(p->current_thread->trapframe) = *(p->trapframe);
-          set_thread_state(p->current_thread, p);
-        }
 
-        if (p->current_thread->state == THREAD_RUNNABLE)
+        if (t->state == THREAD_FREE)
         {
-        *(p->trapframe) = *(t->trapframe);
-        t = p->current_thread;
-        t->state = THREAD_RUNNING;
-        }
-        else
-        {
-          release(&p->lock);
-          continue;
+          t = find_runnable_thread(p);
+          if(t)
+            p->current_thread = t;
+          else{
+            release(&p->lock);
+            continue;
+          }
         }
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
         // before jumping back to us.
         p->state = RUNNING;
+        t->state = THREAD_RUNNING;
         c->proc = p;
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
-        if (t != 0)
-        {
-        set_thread_state(t, p);
-        *(t->trapframe) = *(p->trapframe);
-        }
-
-        for (t = p->threads; t < &p->threads[MAX_THREAD]; t++)
-        {
-          if (t->state == THREAD_RUNNABLE)
-          {
-            p->current_thread = t;
-            if (p->state == ZOMBIE)
-            {
-              p->state = RUNNABLE;
-            }
-            break;
-          }
-        }
-
         // It should have changed its p->state before coming back.
+        if (t->state != THREAD_FREE)
+        {
+          t->state = THREAD_RUNNABLE;
+        }
         c->proc = 0;
         found = 1;
       }
