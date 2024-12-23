@@ -7,11 +7,12 @@
 #include "kernel/proc.h"
 #include "user/user.h"
 
-volatile int a = 0, b = 0, c = 0;
+volatile int a = 0;
 
 void mt(void *arg){
+    printf("THIS IS SECOND THREAD\n");
     // int *number = arg;
-    for(int i = 0; i<10; ++i){
+    // for(int i = 0; i<10; ++i){
         // *number = *number + 1;
 
         // if(number == &a){
@@ -21,18 +22,19 @@ void mt(void *arg){
         // }else{
         //     printf("thread c: %d\n", *number);
         // }
-        printf("i");
-    }
+    // }
+    exit(0);
 }
 
 //passing command line arguments 
 int main(int argc, char *argv[]) 
 {
+    printf("THIS IS MAIN THREAD\n");
     void *stacka = malloc(PGSIZE);
-    void *stackb = malloc(PGSIZE);
-    void *stackc = malloc(PGSIZE);
+    // void *stackb = malloc(PGSIZE);
+    // void *stackc = malloc(PGSIZE);
     thread_create(mt, (void *)&a, stacka);
-    thread_create(mt, (void *)&b, stackb);
-    thread_create(mt, (void *)&c, stackc);
-    return 0;
+    // thread_create(mt, (void *)&b, stackb);
+    // thread_create(mt, (void *)&c, stackc);
+    exit(0);
 } 

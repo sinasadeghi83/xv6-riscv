@@ -84,7 +84,7 @@ struct trapframe {
 };
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
-enum threadstate {THREAD_FREE, THREAD_RUNNABLE, THREAD_RUNNING, THREAD_JOINED};
+enum threadstate {THREAD_FREE, THREAD_USED, THREAD_RUNNABLE, THREAD_RUNNING, THREAD_JOINED};
 
 struct thread
 {

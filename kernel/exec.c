@@ -142,7 +142,6 @@ int exec(char *path, char **argv)
         kfree((void *)t->trapframe);
       t->trapframe = 0;
       t->state = THREAD_FREE;
-      t->id = 0;
       t->join = 0;
     }
     release(&p->lock);

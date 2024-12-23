@@ -40,7 +40,6 @@ int join(void)
 
 int clone(void (*fn)(void *), void *arg, void *stack)
 {
-  int pid;
   struct thread *t;
   struct proc *p = myproc();
 
@@ -57,8 +56,11 @@ int clone(void (*fn)(void *), void *arg, void *stack)
   t->trapframe->sp = (uint64)(stack) + PGSIZE;
   t->trapframe->epc = (uint64)fn;
   t->trapframe->a0 = (uint64)arg;
-  // t->trapframe->ra = (uint64)exitThread;
-  return pid;
+  t->trapframe->ra = 124;
+  t->state = THREAD_RUNNABLE;
+
+  release(&p->lock);
+  return 1;
 }
 
 // Look in the process table for an UNUSED proc.
@@ -85,7 +87,7 @@ allocthread(struct proc *p)
   return 0;
 
 found:
-  p->threads[i].state = THREAD_RUNNABLE;
+  p->threads[i].state = THREAD_USED;
   p->threads[i].id = i;
 
   // Allocate a trapframe page.
@@ -95,7 +97,6 @@ found:
     release(&p->lock);
     return 0;
   }
-  release(&p->lock);
   return &p->threads[i];
 }
 
@@ -206,9 +207,11 @@ void procinit(void)
     p->state = UNUSED;
     p->kstack = KSTACK((int)(p - proc));
     struct thread *t;
+    int i =0;
     for (t = p->threads; t < &p->threads[MAX_THREAD]; t++)
     {
       t->state = THREAD_FREE;
+      t->id = i++; 
     }
   }
 }
@@ -568,15 +571,18 @@ void exit(int status)
   if (p == initproc)
     panic("init exiting");
 
+  acquire(&p->lock);
   freethread(p->current_thread);
   p->trapframe = 0;
+  release(&p->lock);
 
   for (struct thread *t = p->threads; t < &p->threads[MAX_THREAD]; t++)
   {
     acquire(&p->lock);
-    if (t->state == THREAD_RUNNABLE || t->state == THREAD_RUNNING || t->state == THREAD_JOINED)
-    {
+    if(t->state != THREAD_FREE){
       p->state = RUNNABLE;
+      // Jump into the scheduler
+      sched();
       release(&p->lock);
       return;
     }
@@ -673,37 +679,6 @@ int wait(uint64 addr)
   }
 }
 
-void set_thread_state(struct thread *t, struct proc *p)
-{
-  switch (p->state)
-  {
-  case UNUSED:
-    t->state = THREAD_FREE;
-    break;
-
-  case RUNNABLE:
-  case USED:
-    t->state = THREAD_RUNNABLE;
-    break;
-
-  case RUNNING:
-    t->state = THREAD_RUNNING;
-    break;
-
-  case SLEEPING:
-    t->state = THREAD_RUNNABLE;
-    break;
-
-  case ZOMBIE:
-    t->state = THREAD_FREE;
-    break;
-
-  default:
-    t->state = THREAD_FREE;
-    break;
-  }
-}
-
 struct thread *find_runnable_thread(struct proc *p)
 {
   struct thread *t;
@@ -745,31 +720,34 @@ void scheduler(void)
       if (p->state == RUNNABLE)
       {
         t = p->current_thread;
-
-        if (t->state == THREAD_FREE)
-        {
-          t = find_runnable_thread(p);
-          if (t)
-            p->current_thread = t;
-          else
-          {
-            release(&p->lock);
-            continue;
-          }
-        }
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
         // before jumping back to us.
         p->state = RUNNING;
         t->state = THREAD_RUNNING;
         c->proc = p;
+        // printf("D%d\n", t->id);
         swtch(&c->context, &p->context);
+        // printf("E%d\n", t->id);
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         if (t->state != THREAD_FREE)
         {
+          // printf("F%d\n", t->id);
           t->state = THREAD_RUNNABLE;
+        }
+
+        if (t->state == THREAD_FREE)
+        {
+          // printf("A\n");
+          t = find_runnable_thread(p);
+          if (t)
+          {
+            // printf("B%d\n", t->id);
+            p->current_thread = t;
+            p->trapframe = t->trapframe;
+          }
         }
         c->proc = 0;
         found = 1;
